@@ -176,7 +176,8 @@ async function run() {
 
     app.post('/create-payment-intent', verifyJWT, async(req, res) =>{
       const {price} = req.body;
-      const amount = price * 100;
+      const amount = (price * 100);
+      console.log(price, amount);
       const paymentIntent = await stripe.paymentIntents.create({
         amount : amount,
         currency: "usd",
@@ -197,6 +198,49 @@ async function run() {
       const deleteResult = await cartCollection.deleteMany(query);
       res.send({insertResult, deleteResult});
     })
+
+    app.get('/admin-stats', async(req, res) => {
+      const users = await userCollection.estimatedDocumentCount();
+      const products = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+      const payments = await paymentCollection.find().toArray();
+      const revenue = payments.reduce((sum, payment) => sum + payment.price, 0)
+      res.send({
+        revenue,
+        users,
+        products,
+        orders
+      })
+    })
+    
+  
+    app.get('/order-stats', async (req, res) => {
+        const pipeline =  [
+          {
+            $lookup: {
+              from: 'menu',
+              localField: 'menuItems',
+              foreignField: '_id',
+              as: 'menuDetails',
+            },
+          },
+          {
+            $unwind: '$menuDetails',
+          },
+          {
+            $group: {
+              _id: '$menuDetails.category',
+              itemCount: { $sum: 1 },
+              totalPrice: { $sum: '$menuDetails.price' },
+            },
+          },
+          
+        ]
+        const result = await paymentCollection.aggregate(pipeline).toArray();
+        console.log(result);
+        res.send(result);
+    });
+    
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
